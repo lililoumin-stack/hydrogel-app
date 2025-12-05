@@ -149,23 +149,23 @@ with st.sidebar:
     # 2. A 嵌段输入
     col_a1, col_a2 = st.columns(2)
     with col_a1:
-        mono_a = st.selectbox("A 单体", ["EG"], index=0, help="亲水段通常为EG")
+        mono_a = st.selectbox("A", ["EG"], index=0, help="亲水段通常为EG")
     with col_a2:
-        mn_a_val = st.number_input("A 分子量 (Mn)", value=1000.0, step=100.0)
+        mn_a_val = st.number_input("分子量", value=1000.0, step=100.0)
 
     # 3. B1 嵌段输入
     col_b1_1, col_b1_2 = st.columns(2)
     with col_b1_1:
-        mono_b1 = st.selectbox("B1 单体", ["CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
+        mono_b1 = st.selectbox("B1", ["CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
     with col_b1_2:
-        mn_b1_val = st.number_input("B1 分子量 (Mn)", value=700.0, step=100.0)
+        mn_b1_val = st.number_input("B1", value=700.0, step=100.0)
 
     # 4. B2 嵌段输入
     col_b2_1, col_b2_2 = st.columns(2)
     with col_b2_1:
-        mono_b2 = st.selectbox("B2 单体", ["None", "CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
+        mono_b2 = st.selectbox("B2", ["None", "CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
     with col_b2_2:
-        mn_b2_val = st.number_input("B2 分子量 (Mn)", value=0.0, step=100.0)
+        mn_b2_val = st.number_input("B2", value=0.0, step=100.0)
 
     # 5. GPC 和 PDI
     col_gpc1, col_gpc2 = st.columns(2)
