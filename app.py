@@ -230,39 +230,6 @@ with st.sidebar:
     col_res3.metric("Ratio_B (Mole%)", f"{calc_ratio_b:.3f}")
     calc_ratio_b = 1.0 - calc_ratio_a
 
-    # 显示计算结果预览
-    st.markdown("---")
-    st.markdown("**🧪 自动生成的结构参数:**")
-    st.code(f"StruD: {stru_d}", language="text")
-    col_res1, col_res2, col_res3 = st.columns(3)
-    col_res1.metric("计算总 Mn", f"{calc_mn_total:.1f}")
-    col_res2.metric("Ratio_A (Mole%)", f"{calc_ratio_a:.3f}")
-    col_res3.metric("Ratio_B (Mole%)", f"{calc_ratio_b:.3f}")
-
-    # 3. 计算 Ratio (严格按照你的公式)
-    # Ratio_A = Total A Segments / Total B Segments
-    # Ratio_B = Total B Segments / Total A Segments
-    
-    if total_dp_b > 0:
-        calc_ratio_a = total_dp_a / total_dp_b
-    else:
-        calc_ratio_a = 0.0 # 避免除以零
-        
-    if total_dp_a > 0:
-        calc_ratio_b = total_dp_b / total_dp_a
-    else:
-        calc_ratio_b = 0.0
-
-    # 显示计算结果预览
-    st.markdown("---")
-    st.markdown("**🧪 自动生成的结构参数:**")
-    st.code(f"StruD: {stru_d}", language="text")
-    # 显示聚合度详情，方便核对
-    st.caption(f"Total DP_A: {total_dp_a} | Total DP_B: {total_dp_b}")
-    st.caption(f"Ratio_A (A/B): {calc_ratio_a:.3f} | Ratio_B (B/A): {calc_ratio_b:.3f}")
-    st.caption(f"Total Mn: {calc_mn_total:.1f}")
-
-
 # --- 主界面：调节实验条件 ---
 st.header("实验条件调节 & 实时预测")
 
