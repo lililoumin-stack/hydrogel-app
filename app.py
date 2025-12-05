@@ -149,23 +149,23 @@ with st.sidebar:
     # 2. A 嵌段输入
     col_a1, col_a2 = st.columns(2)
     with col_a1:
-        mono_a = st.selectbox("A", ["EG"], index=0, help="亲水段通常为EG")
+        mono_a = st.selectbox("A 单体", ["EG"], index=0, help="亲水段通常为EG")
     with col_a2:
-        mn_a_val = st.number_input("分子量", value=1000.0, step=100.0)
+        mn_a_val = st.number_input("A 分子量 (Mn)", value=1000.0, step=100.0)
 
     # 3. B1 嵌段输入
     col_b1_1, col_b1_2 = st.columns(2)
     with col_b1_1:
-        mono_b1 = st.selectbox("B1", ["CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
+        mono_b1 = st.selectbox("B1 单体", ["CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
     with col_b1_2:
-        mn_b1_val = st.number_input("分子量", value=700.0, step=100.0)
+        mn_b1_val = st.number_input("B1 分子量 (Mn)", value=700.0, step=100.0)
 
     # 4. B2 嵌段输入
     col_b2_1, col_b2_2 = st.columns(2)
     with col_b2_1:
-        mono_b2 = st.selectbox("B2", ["None", "CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
+        mono_b2 = st.selectbox("B2 单体", ["None", "CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
     with col_b2_2:
-        mn_b2_val = st.number_input("分子量", value=0.0, step=100.0)
+        mn_b2_val = st.number_input("B2 分子量 (Mn)", value=0.0, step=100.0)
 
     # 5. GPC 和 PDI
     col_gpc1, col_gpc2 = st.columns(2)
@@ -174,50 +174,73 @@ with st.sidebar:
     with col_gpc2:
         pdi = st.number_input("PDI", value=1.2)
 
-    # --- 自动计算逻辑 ---
-    # 计算聚合度 (DP)
+    # --- 自动计算逻辑 (UPDATED) ---
+    
+    # 1. 计算各单体聚合度 (DP)
     # round() 四舍五入取整
     dp_a = int(round(mn_a_val / MONOMER_MW.get(mono_a, 100)))
     dp_b1 = int(round(mn_b1_val / MONOMER_MW.get(mono_b1, 100)))
     dp_b2 = int(round(mn_b2_val / MONOMER_MW.get(mono_b2, 100))) if mono_b2 != "None" else 0
 
-    # 生成 StruD 字符串
-    # 格式逻辑：根据用户要求
-    # ABA -> A(a)B1(b1)B2(b2)A(a) (注意：这里假设中间是 B1-B2 的混合或嵌段，两端是 A)
-    # BAB -> B1(b1)B2(b2)A(a)B1(b1)B2(b2)
-    
-    # 构建 B 部分的字符串片段
-    b_part_str = f"({mono_b1}){dp_b1}"
-    if mono_b2 != "None" and dp_b2 > 0:
-        b_part_str += f"({mono_b2}){dp_b2}"
-    
-    # 构建 A 部分的字符串片段
-    a_part_str = f"({mono_a}){dp_a}"
-
+    # 2. 生成 StruD 字符串 & 计算总聚合度
     if topology == "ABA":
-        # A - (B1+B2) - A
-        stru_d = f"{a_part_str}{b_part_str}{a_part_str}"
-        # 计算总 Mn (假设输入的是单个嵌段的 Mn)
-        # ABA 有两个 A 块，中间各有一个 B1, B2 (根据公式 A(a)B1(b1)B2(b2)A(a))
-        calc_mn_total = (mn_a_val * 2) + mn_b1_val + mn_b2_val
-        # 计算比例
-        calc_ratio_a = (mn_a_val * 2) / calc_mn_total if calc_mn_total > 0 else 0
+        # 结构：A - (B1+B2) - A
+        # A(a)B1(b1)B2(b2)A(a)
         
-    else: # BAB
-        # (B1+B2) - A - (B1+B2)
-        stru_d = f"{b_part_str}{a_part_str}{b_part_str}"
-        # BAB 有两个 B1, B2 块 (两端)，中间一个 A
-        calc_mn_total = mn_a_val + (mn_b1_val * 2) + (mn_b2_val * 2)
-        # 计算比例
-        calc_ratio_a = mn_a_val / calc_mn_total if calc_mn_total > 0 else 0
+        # 字符串构建
+        b_part_str = f"({mono_b1}){dp_b1}"
+        if mono_b2 != "None" and dp_b2 > 0:
+            b_part_str += f"({mono_b2}){dp_b2}"
+        a_part_str = f"({mono_a}){dp_a}"
+        stru_d = f"{a_part_str}{b_part_str}{a_part_str}"
 
-    calc_ratio_b = 1.0 - calc_ratio_a
+        # 汇总聚合度 (Total DP)
+        total_dp_a = dp_a * 2
+        total_dp_b = dp_b1 + dp_b2
+        
+        # 总分子量 Mn 计算 (基于输入值)
+        calc_mn_total = (mn_a_val * 2) + mn_b1_val + mn_b2_val
+
+    else: # BAB
+        # 结构：(B1+B2) - A - (B1+B2)
+        # B1(b1)B2(b2)A(a)B1(b1)B2(b2)
+        
+        # 字符串构建
+        b_part_str = f"({mono_b1}){dp_b1}"
+        if mono_b2 != "None" and dp_b2 > 0:
+            b_part_str += f"({mono_b2}){dp_b2}"
+        a_part_str = f"({mono_a}){dp_a}"
+        stru_d = f"{b_part_str}{a_part_str}{b_part_str}"
+
+        # 汇总聚合度 (Total DP)
+        total_dp_a = dp_a
+        total_dp_b = (dp_b1 + dp_b2) * 2
+
+        # 总分子量 Mn 计算 (基于输入值)
+        calc_mn_total = mn_a_val + (mn_b1_val * 2) + (mn_b2_val * 2)
+
+    # 3. 计算 Ratio (严格按照你的公式)
+    # Ratio_A = Total A Segments / Total B Segments
+    # Ratio_B = Total B Segments / Total A Segments
+    
+    if total_dp_b > 0:
+        calc_ratio_a = total_dp_a / total_dp_b
+    else:
+        calc_ratio_a = 0.0 # 避免除以零
+        
+    if total_dp_a > 0:
+        calc_ratio_b = total_dp_b / total_dp_a
+    else:
+        calc_ratio_b = 0.0
 
     # 显示计算结果预览
     st.markdown("---")
-    st.markdown("**自动生成的结构参数:**")
+    st.markdown("**🧪 自动生成的结构参数:**")
     st.code(f"StruD: {stru_d}", language="text")
-    st.caption(f"计算总 Mn: {calc_mn_total:.1f} | Ratio_A: {calc_ratio_a:.3f} | Ratio_B: {calc_ratio_b:.3f}")
+    # 显示聚合度详情，方便核对
+    st.caption(f"Total DP_A: {total_dp_a} | Total DP_B: {total_dp_b}")
+    st.caption(f"Ratio_A (A/B): {calc_ratio_a:.3f} | Ratio_B (B/A): {calc_ratio_b:.3f}")
+    st.caption(f"Total Mn: {calc_mn_total:.1f}")
 
 
 # --- 主界面：调节实验条件 ---
