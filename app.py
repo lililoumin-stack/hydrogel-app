@@ -6,7 +6,7 @@ import re
 from rdkit import Chem
 from rdkit.Chem import Descriptors, rdMolDescriptors, Lipinski
 
-# ================== 1. 核心特征工程类 (来自你的 ing.py) ==================
+# ================== 1. 核心特征工程类 (保持不变) ==================
 class PolymerFeature:
     """计算聚合物特征（支持单个/批量处理，返回加权和 & 加权平均值）"""
     def __init__(self):
@@ -19,7 +19,6 @@ class PolymerFeature:
             "LabuteASA", "VSA_Estate1", "VSA_Estate2",
             "NumRingsSharingAtoms", "NumBicyclicAtoms"
         ]
-        # 补充缺失的单体，根据需要可继续添加
         self.monomer_smiles = {
             "EG": "[*]CCC[*]",
             "CL": "O=C([*])CCCCCO[*]",
@@ -108,7 +107,22 @@ class PolymerFeature:
 # ================== 2. Streamlit 页面逻辑 ==================
 st.set_page_config(page_title="AI 水凝胶预测系统", layout="wide")
 
-# 加载模型和处理器
+# 辅助数据：单体重复单元的近似分子量 (用于将 Mn 转换为 聚合度 DP)
+# 注意：这里使用常见重复单元的分子量，如有偏差可在此修正
+MONOMER_MW = {
+    "EG": 44.05,
+    "CL": 114.14,
+    "LA": 72.06,  # 这里的LA指乳酸单元
+    "LLA": 72.06,
+    "DLA": 72.06,
+    "GA": 58.04,
+    "PDO": 102.09,
+    "TMC": 102.09,
+    "TOSUO": 172.18, # 估算值 C8H12O4
+    "PG": 74.08,
+    "None": 1.0 
+}
+
 @st.cache_resource
 def load_models():
     try:
@@ -127,20 +141,84 @@ st.title("AI 水凝胶相变预测系统")
 # --- 侧边栏：输入聚合物固有属性 ---
 with st.sidebar:
     st.header("1. 聚合物属性输入")
-    st.info("在这里输入材料的化学结构信息")
-    
-    stru_d = st.text_input("结构式 (StruD)", value="(CL)700(EG)1000(CL)700", help="格式示例: (CL)700(EG)1000(CL)700")
-    topology = st.selectbox("拓扑结构 (Topology)", ["BAB", "ABA", "Linear", "Star"], index=0) # 根据你的实际类别调整
-    
-    col_s1, col_s2 = st.columns(2)
-    with col_s1:
-        mn = st.number_input("Mn (分子量)", value=2500.0)
+    st.info("请输入各嵌段信息，系统将自动生成结构式和比例")
+
+    # 1. 拓扑结构
+    topology = st.selectbox("拓扑结构 (Topology)", ["BAB", "ABA"], index=0)
+
+    # 2. A 嵌段输入
+    col_a1, col_a2 = st.columns(2)
+    with col_a1:
+        mono_a = st.selectbox("A 单体", ["EG"], index=0, help="亲水段通常为EG")
+    with col_a2:
+        mn_a_val = st.number_input("A 分子量 (Mn)", value=1000.0, step=100.0)
+
+    # 3. B1 嵌段输入
+    col_b1_1, col_b1_2 = st.columns(2)
+    with col_b1_1:
+        mono_b1 = st.selectbox("B1 单体", ["CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
+    with col_b1_2:
+        mn_b1_val = st.number_input("B1 分子量 (Mn)", value=700.0, step=100.0)
+
+    # 4. B2 嵌段输入
+    col_b2_1, col_b2_2 = st.columns(2)
+    with col_b2_1:
+        mono_b2 = st.selectbox("B2 单体", ["None", "CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
+    with col_b2_2:
+        mn_b2_val = st.number_input("B2 分子量 (Mn)", value=0.0, step=100.0)
+
+    # 5. GPC 和 PDI
+    col_gpc1, col_gpc2 = st.columns(2)
+    with col_gpc1:
+        gpc = st.number_input("GPC (Mn)", value=2500.0)
+    with col_gpc2:
         pdi = st.number_input("PDI", value=1.2)
-    with col_s2:
-        gpc = st.number_input("GPC", value=3500.0)
-        ratio_a = st.number_input("Ratio_A (亲水比例)", value=0.21, min_value=0.0, max_value=1.0)
+
+    # --- 自动计算逻辑 ---
+    # 计算聚合度 (DP)
+    # round() 四舍五入取整
+    dp_a = int(round(mn_a_val / MONOMER_MW.get(mono_a, 100)))
+    dp_b1 = int(round(mn_b1_val / MONOMER_MW.get(mono_b1, 100)))
+    dp_b2 = int(round(mn_b2_val / MONOMER_MW.get(mono_b2, 100))) if mono_b2 != "None" else 0
+
+    # 生成 StruD 字符串
+    # 格式逻辑：根据用户要求
+    # ABA -> A(a)B1(b1)B2(b2)A(a) (注意：这里假设中间是 B1-B2 的混合或嵌段，两端是 A)
+    # BAB -> B1(b1)B2(b2)A(a)B1(b1)B2(b2)
+    
+    # 构建 B 部分的字符串片段
+    b_part_str = f"({mono_b1}){dp_b1}"
+    if mono_b2 != "None" and dp_b2 > 0:
+        b_part_str += f"({mono_b2}){dp_b2}"
+    
+    # 构建 A 部分的字符串片段
+    a_part_str = f"({mono_a}){dp_a}"
+
+    if topology == "ABA":
+        # A - (B1+B2) - A
+        stru_d = f"{a_part_str}{b_part_str}{a_part_str}"
+        # 计算总 Mn (假设输入的是单个嵌段的 Mn)
+        # ABA 有两个 A 块，中间各有一个 B1, B2 (根据公式 A(a)B1(b1)B2(b2)A(a))
+        calc_mn_total = (mn_a_val * 2) + mn_b1_val + mn_b2_val
+        # 计算比例
+        calc_ratio_a = (mn_a_val * 2) / calc_mn_total if calc_mn_total > 0 else 0
         
-    ratio_b = st.number_input("Ratio_B (疏水比例)", value=0.79, min_value=0.0, max_value=1.0)
+    else: # BAB
+        # (B1+B2) - A - (B1+B2)
+        stru_d = f"{b_part_str}{a_part_str}{b_part_str}"
+        # BAB 有两个 B1, B2 块 (两端)，中间一个 A
+        calc_mn_total = mn_a_val + (mn_b1_val * 2) + (mn_b2_val * 2)
+        # 计算比例
+        calc_ratio_a = mn_a_val / calc_mn_total if calc_mn_total > 0 else 0
+
+    calc_ratio_b = 1.0 - calc_ratio_a
+
+    # 显示计算结果预览
+    st.markdown("---")
+    st.markdown("**🧪 自动生成的结构参数:**")
+    st.code(f"StruD: {stru_d}", language="text")
+    st.caption(f"计算总 Mn: {calc_mn_total:.1f} | Ratio_A: {calc_ratio_a:.3f} | Ratio_B: {calc_ratio_b:.3f}")
+
 
 # --- 主界面：调节实验条件 ---
 st.header("2. 实验条件调节 & 实时预测")
@@ -152,17 +230,17 @@ with col_main1:
     temperature = st.slider("温度 (Temperature, °C)", min_value=0.0, max_value=80.0, value=37.0)
     concentration = st.slider("浓度 (Concentration, wt%)", min_value=1.0, max_value=50.0, value=20.0)
 
-    # 构造输入 DataFrame
+    # 构造输入 DataFrame (使用自动计算的值)
     input_data = {
         'StruD': [stru_d],
         'Topology': [topology],
-        'Mn': [mn],
+        'Mn': [calc_mn_total], # 使用计算出的总 Mn
         'GPC': [gpc],
         'PDI': [pdi],
         'Concentration_wt%': [concentration],
         'Temperature': [temperature],
-        'Ratio_A': [ratio_a],
-        'Ratio_B': [ratio_b]
+        'Ratio_A': [calc_ratio_a], # 使用计算出的 Ratio_A
+        'Ratio_B': [calc_ratio_b]  # 使用计算出的 Ratio_B
     }
     df_input = pd.DataFrame(input_data)
 
@@ -172,21 +250,16 @@ with col_main1:
                 # 1. 特征工程：生成 RDKit 描述符
                 df_features = pf.add_polymer_features_to_df(df_input)
                 
-                # 2. 确保列顺序与训练时一致 (Base features + Polymer features)
-                # 这里我们按照 ing.py 里的逻辑重新组装 features 列表
+                # 2. 确保列顺序与训练时一致
                 base_features = ['Topology', 'Mn', 'GPC', 'PDI', 'Concentration_wt%', 'Temperature', 'Ratio_A', 'Ratio_B']
                 poly_cols = [c for c in df_features.columns if c.startswith('Polymer_')]
                 features_all = base_features + poly_cols
                 
                 X = df_features[features_all]
                 
-                # 3. 预处理 (标准化/OneHot)
+                # 3. 预处理
                 X_processed = preprocessor.transform(X)
                 
-                # 补全可能丢失的列名以便查看（可选）
-                # feature_names = preprocessor.get_feature_names_out()
-                # X_processed = pd.DataFrame(X_processed, columns=feature_names)
-
                 # 4. 预测
                 prediction = model.predict(X_processed)[0]
                 probability = model.predict_proba(X_processed)[0]
@@ -206,10 +279,10 @@ with col_main1:
                     st.json(input_data)
 
             except Exception as e:
-                st.error(f"预测出错: {str(e)}\n请检查输入的结构式格式是否正确，或者特征列是否与模型匹配。")
+                st.error(f"预测出错: {str(e)}\n请检查特征列是否与模型匹配。")
         else:
             st.error("模型未加载，无法预测。")
 
 # 添加一个提示框
 st.markdown("---")
-st.caption("小贴士: 修改左侧侧边栏的结构参数，或拖动中间的滑块，点击预测按钮即可查看不同条件下的相态变化。")
+st.caption("小贴士: 在左侧修改单体类型和分子量，系统会自动计算聚合度并生成结构式。")
