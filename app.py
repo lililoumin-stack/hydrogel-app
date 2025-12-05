@@ -158,14 +158,14 @@ with st.sidebar:
     with col_b1_1:
         mono_b1 = st.selectbox("B1", ["CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
     with col_b1_2:
-        mn_b1_val = st.number_input("B1", value=700.0, step=100.0)
+        mn_b1_val = st.number_input("分子量", value=700.0, step=100.0)
 
     # 4. B2 嵌段输入
     col_b2_1, col_b2_2 = st.columns(2)
     with col_b2_1:
         mono_b2 = st.selectbox("B2", ["None", "CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
     with col_b2_2:
-        mn_b2_val = st.number_input("B2", value=0.0, step=100.0)
+        mn_b2_val = st.number_input("分子量", value=0.0, step=100.0)
 
     # 5. GPC 和 PDI
     col_gpc1, col_gpc2 = st.columns(2)
