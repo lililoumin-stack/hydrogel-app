@@ -174,50 +174,54 @@ with st.sidebar:
     with col_gpc2:
         pdi = st.number_input("PDI", value=1.2)
 
-    # --- 自动计算逻辑 (UPDATED) ---
-    
-    # 1. 计算各单体聚合度 (DP)
-    # round() 四舍五入取整
+    # --- 自动计算逻辑 ---
+    # 1. 计算聚合度 (DP) = Mn / 单体分子量
     dp_a = int(round(mn_a_val / MONOMER_MW.get(mono_a, 100)))
     dp_b1 = int(round(mn_b1_val / MONOMER_MW.get(mono_b1, 100)))
     dp_b2 = int(round(mn_b2_val / MONOMER_MW.get(mono_b2, 100))) if mono_b2 != "None" else 0
 
-    # 2. 生成 StruD 字符串 & 计算总聚合度
+    # 2. 生成 StruD 字符串 & 计算 Ratio
+    # 构建各部分的字符串片段
+    b_part_str = f"({mono_b1}){dp_b1}"
+    if mono_b2 != "None" and dp_b2 > 0:
+        b_part_str += f"({mono_b2}){dp_b2}"
+    
+    a_part_str = f"({mono_a}){dp_a}"
+
     if topology == "ABA":
-        # 结构：A - (B1+B2) - A
-        # A(a)B1(b1)B2(b2)A(a)
-        
-        # 字符串构建
-        b_part_str = f"({mono_b1}){dp_b1}"
-        if mono_b2 != "None" and dp_b2 > 0:
-            b_part_str += f"({mono_b2}){dp_b2}"
-        a_part_str = f"({mono_a}){dp_a}"
+        # 结构: A(a) - B1(b1)B2(b2) - A(a)
         stru_d = f"{a_part_str}{b_part_str}{a_part_str}"
-
-        # 汇总聚合度 (Total DP)
-        total_dp_a = dp_a * 2
-        total_dp_b = dp_b1 + dp_b2
         
-        # 总分子量 Mn 计算 (基于输入值)
+        # Mn 计算 (保持质量守恒: 两端 A + 中间 B1+B2)
         calc_mn_total = (mn_a_val * 2) + mn_b1_val + mn_b2_val
-
-    else: # BAB
-        # 结构：(B1+B2) - A - (B1+B2)
-        # B1(b1)B2(b2)A(a)B1(b1)B2(b2)
         
-        # 字符串构建
-        b_part_str = f"({mono_b1}){dp_b1}"
-        if mono_b2 != "None" and dp_b2 > 0:
-            b_part_str += f"({mono_b2}){dp_b2}"
-        a_part_str = f"({mono_a}){dp_a}"
+        # Ratio 计算 (修正为基于聚合度 DP 的比例)
+        # 公式: Ratio_A = (a + a) / (a + a + b1 + b2)
+        total_dp = (dp_a * 2) + dp_b1 + dp_b2
+        calc_ratio_a = (dp_a * 2) / total_dp if total_dp > 0 else 0
+        
+    else: # BAB
+        # 结构: B1(b1)B2(b2) - A(a) - B1(b1)B2(b2)
         stru_d = f"{b_part_str}{a_part_str}{b_part_str}"
-
-        # 汇总聚合度 (Total DP)
-        total_dp_a = dp_a
-        total_dp_b = (dp_b1 + dp_b2) * 2
-
-        # 总分子量 Mn 计算 (基于输入值)
+        
+        # Mn 计算 (两端 B1+B2 + 中间 A)
         calc_mn_total = mn_a_val + (mn_b1_val * 2) + (mn_b2_val * 2)
+        
+        # Ratio 计算 (修正为基于聚合度 DP 的比例)
+        # 公式: Ratio_A = a / (a + 2*b1 + 2*b2)
+        total_dp = dp_a + (dp_b1 * 2) + (dp_b2 * 2)
+        calc_ratio_a = dp_a / total_dp if total_dp > 0 else 0
+
+    calc_ratio_b = 1.0 - calc_ratio_a
+
+    # 显示计算结果预览
+    st.markdown("---")
+    st.markdown("**🧪 自动生成的结构参数:**")
+    st.code(f"StruD: {stru_d}", language="text")
+    col_res1, col_res2, col_res3 = st.columns(3)
+    col_res1.metric("计算总 Mn", f"{calc_mn_total:.1f}")
+    col_res2.metric("Ratio_A (Mole%)", f"{calc_ratio_a:.3f}")
+    col_res3.metric("Ratio_B (Mole%)", f"{calc_ratio_b:.3f}")
 
     # 3. 计算 Ratio (严格按照你的公式)
     # Ratio_A = Total A Segments / Total B Segments
