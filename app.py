@@ -151,21 +151,21 @@ with st.sidebar:
     with col_a1:
         mono_a = st.selectbox("A 单体", ["EG"], index=0, help="亲水段通常为EG")
     with col_a2:
-        mn_a_val = st.number_input("A 分子量 (Mn)", value=1000.0, step=100.0)
+        mn_a_val = st.number_input("分子量", value=1000.0, step=100.0)
 
     # 3. B1 嵌段输入
     col_b1_1, col_b1_2 = st.columns(2)
     with col_b1_1:
         mono_b1 = st.selectbox("B1 单体", ["CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
     with col_b1_2:
-        mn_b1_val = st.number_input("B1 分子量 (Mn)", value=700.0, step=100.0)
+        mn_b1_val = st.number_input("分子量", value=700.0, step=100.0)
 
     # 4. B2 嵌段输入
     col_b2_1, col_b2_2 = st.columns(2)
     with col_b2_1:
         mono_b2 = st.selectbox("B2 单体", ["None", "CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
     with col_b2_2:
-        mn_b2_val = st.number_input("B2 分子量 (Mn)", value=0.0, step=100.0)
+        mn_b2_val = st.number_input("分子量", value=0.0, step=100.0)
 
     # 5. GPC 和 PDI
     col_gpc1, col_gpc2 = st.columns(2)
@@ -222,7 +222,7 @@ with st.sidebar:
 
     # 显示计算结果预览
     st.markdown("---")
-    st.markdown("**自动生成的结构参数:**")
+    st.markdown("**结构参数:**")
     st.code(f"StruD: {stru_d}", language="text")
     col_res1, col_res2, col_res3 = st.columns(3)
     col_res1.metric("计算总 Mn", f"{calc_mn_total:.1f}")
