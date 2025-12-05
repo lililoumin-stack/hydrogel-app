@@ -215,13 +215,13 @@ with st.sidebar:
 
     # 显示计算结果预览
     st.markdown("---")
-    st.markdown("**🧪 自动生成的结构参数:**")
+    st.markdown("**自动生成的结构参数:**")
     st.code(f"StruD: {stru_d}", language="text")
     st.caption(f"计算总 Mn: {calc_mn_total:.1f} | Ratio_A: {calc_ratio_a:.3f} | Ratio_B: {calc_ratio_b:.3f}")
 
 
 # --- 主界面：调节实验条件 ---
-st.header("2. 实验条件调节 & 实时预测")
+st.header("实验条件调节 & 实时预测")
 
 col_main1, col_main2 = st.columns([2, 1])
 
