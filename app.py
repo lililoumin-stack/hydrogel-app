@@ -7,102 +7,192 @@ from rdkit import Chem
 from rdkit.Chem import Descriptors, rdMolDescriptors, Lipinski
 
 # ================== 1. 核心特征工程类 (保持不变) ==================
+import re
+import pandas as pd
+from rdkit import Chem
+from rdkit.Chem import Descriptors, Lipinski, rdMolDescriptors
+
 class PolymerFeature:
     """计算聚合物特征（支持单个/批量处理，返回加权和 & 加权平均值）"""
+
     def __init__(self):
+        self.carbonyl_pattern = Chem.MolFromSmarts("[CX3]=[OX1]")
+        # 增强描述符列表（保持和你主程序需要的列表一致）
         self.desc_list = [
             "LogP", "TPSA", "HBA", "HBD", "AromaticRings",
             "MW", "HeavyAtomCount", "RotatableBonds", "HeteroatomCount",
             "RingCount", "AliphaticRings", "SaturatedRings", "AromaticAtoms",
             "FormalCharge", "FractionCSP3",
-            "NumAmideBonds", "DoubleBondCount",
+            "NumAmideBonds", "StereoCenterCount","CarbonylCount",
             "LabuteASA", "VSA_Estate1", "VSA_Estate2",
-            "NumRingsSharingAtoms", "NumBicyclicAtoms"
+            "NumRingsSharingAtoms", "NumBicyclicAtoms",
         ]
         self.monomer_smiles = {
-            "EG": "[*]CCC[*]",
+            "EG": "[*]CCO[*]",
             "CL": "O=C([*])CCCCCO[*]",
             "LA": "O=C(C(O[*])C)[*]",
-            "LLA": "O=C(C(O[*])C)[*]",
-            "DLA": "O=C(C(O[*])C)[*]",
+            "LLA": "O=C([C@@H](C)O[*])[*]",
+            "DLA": "O=C([C@H](C)O[*])[*]",
             "TMC": "O=C([*])OCCCO[*]",
-            "GA": "O=C(C(O[*])C)[*]",
+            "GA": "O=C([*])CO[*]",
             "PDO": "O=C([*])COCCO[*]",
             "TOSUO": "O=C([*])CCC1(OCCO1)CCO[*]", 
-            "PG": "CC(CC[*])O[*]", 
+            "PG": "C(CC[*])O[*]", 
         }
-
+    #匹配 C=O 双键    
+    def get_carbonyl_count(mol):
+        pattern = Chem.MolFromSmarts("[CX3]=[OX1]")
+        return len(mol.GetSubstructMatches(pattern))
+    
     def get_descriptors(self, smiles):
+        """提取单体分子描述符（增强版）"""
         mol = Chem.MolFromSmiles(smiles)
-        if not mol: return {}
+        if mol is None:
+            return {k: 0 for k in self.desc_list}
+
         desc = {
+            # ====== 你原本的 ======
             "LogP": Descriptors.MolLogP(mol),
             "TPSA": Descriptors.TPSA(mol),
             "HBA": rdMolDescriptors.CalcNumHBA(mol),
             "HBD": rdMolDescriptors.CalcNumHBD(mol),
             "AromaticRings": rdMolDescriptors.CalcNumAromaticRings(mol),
+
+            # ====== 原子层面基础结构特征 ======
             "MW": Descriptors.MolWt(mol),
             "HeavyAtomCount": Lipinski.HeavyAtomCount(mol),
             "RotatableBonds": Lipinski.NumRotatableBonds(mol),
             "HeteroatomCount": rdMolDescriptors.CalcNumHeteroatoms(mol),
+
+            # ====== 芳香性、环结构 ======
             "RingCount": rdMolDescriptors.CalcNumRings(mol),
             "AliphaticRings": rdMolDescriptors.CalcNumAliphaticRings(mol),
             "SaturatedRings": rdMolDescriptors.CalcNumSaturatedRings(mol),
+            "AromaticAtoms": sum(1 for a in mol.GetAtoms() if a.GetIsAromatic()),
+
+            # ====== 电子性质（charge / polar） ======
             "FormalCharge": Chem.GetFormalCharge(mol),
             "FractionCSP3": rdMolDescriptors.CalcFractionCSP3(mol),
+
+            # ====== 子结构性质（极性、键类型） ======
             "NumAmideBonds": rdMolDescriptors.CalcNumAmideBonds(mol),
-            "DoubleBondCount": rdMolDescriptors.CalcNumAtomStereoCenters(mol),
+            "StereoCenterCount": rdMolDescriptors.CalcNumAtomStereoCenters(mol), 
+            "CarbonylCount": len(mol.GetSubstructMatches(self.carbonyl_pattern)),
+
+            # ====== 表面积相关 ======
             "LabuteASA": rdMolDescriptors.CalcLabuteASA(mol),
+
+            # ====== 环结构细节 ======
             "NumRingsSharingAtoms": rdMolDescriptors.CalcNumBridgeheadAtoms(mol),
             "NumBicyclicAtoms": rdMolDescriptors.CalcNumSpiroAtoms(mol),
+            
+            # 补充列表里有但此处未计算的，防止 Key Error（设为0）
+            "VSA_Estate1": 0,
+            "VSA_Estate2": 0,
         }
-        return {k: (v if v is not None else 0) for k, v in desc.items()}
+
+        # 处理 None 或 NAN
+        desc = {k: (v if v is not None else 0) for k, v in desc.items()}
+        
+        return desc
 
     def parse_polymer(self, polymer_str):
+        """
+        解析类似 (CL)5.9(TMC)2.4-(EG)22.7 这种字符串
+        【修复】: 现在支持重复单体累加 (如 ABA 结构 (CL)10(EG)20(CL)10)，防止后面的值覆盖前面的值
+        """
         pattern = r"\((.*?)\)([\d\.]+)"
         matches = re.findall(pattern, polymer_str)
-        return {monomer: float(num) for monomer, num in matches}
+        
+        composition = {}
+        for monomer, num_str in matches:
+            num = float(num_str)
+            if monomer in composition:
+                composition[monomer] += num  # 如果单体已存在，累加聚合度
+            else:
+                composition[monomer] = num   # 否则新建
+        
+        return composition
 
     def polymer_features(self, polymer_str):
+        """计算聚合物亲水段与疏水段的特征（加权和 + 加权平均）"""
+        # 单体分类
         hydrophilic = {'EG'}
         hydrophobic = {'CL','LA','LLA','DLA','TMC','GA','PDO','TOSUO','PG'}
+
         composition = self.parse_polymer(polymer_str)
         total_units = sum(composition.values())
-        if total_units == 0: return {}
+        if total_units == 0:
+             raise ValueError("总聚合度为0")
 
-        weighted_A, weighted_B = {}, {}
+        # 计算亲水段 (A) 和疏水段 (B) 的单体数量之和
+        dp_A = sum(num for mono, num in composition.items() if mono in hydrophilic)
+        dp_B = sum(num for mono, num in composition.items() if mono in hydrophobic)
+
+        # 亲水段(A)和疏水段(B)特征存储
+        weighted_A = {}  # hydrophilic
+        weighted_B = {}  # hydrophobic
+
+        # 初始化字典，防止只有A或只有B时报错
+        sample_desc = self.get_descriptors(self.monomer_smiles['EG']) #以此为模板
+        for k in sample_desc.keys():
+            weighted_A[k] = 0
+            weighted_B[k] = 0
+
+        # 遍历并计算权重累积
         for mono, num in composition.items():
-            if mono not in self.monomer_smiles: continue
+            if mono not in self.monomer_smiles:
+                raise ValueError(f"未知单体: {mono}")
+            
             smiles = self.monomer_smiles[mono]
             desc = self.get_descriptors(smiles)
-            for k, v in desc.items():
-                if mono in hydrophilic:
-                    weighted_A[k] = weighted_A.get(k, 0) + v * num
-                elif mono in hydrophobic:
-                    weighted_B[k] = weighted_B.get(k, 0) + v * num
 
+            for k, v in desc.items():
+                if mono in hydrophilic:  # 若为亲水段
+                    weighted_A[k] += v * num
+                elif mono in hydrophobic:  # 若为疏水段
+                    weighted_B[k] += v * num
+                # else: 已在parse校验，此处通常不会触发
+
+        # 计算加权平均（除以总单体数）
+        weighted_A_avg = {f"{k} A avg": v / total_units for k, v in weighted_A.items()}
+        weighted_B_avg = {f"{k} B avg": v / total_units for k, v in weighted_B.items()}
+
+        # 总输出整理
         all_features = {}
-        all_features.update({f"{k}_A_sum": v for k, v in weighted_A.items()})
-        all_features.update({f"{k}_B_sum": v for k, v in weighted_B.items()})
-        all_features.update({f"{k}_A_avg": v / total_units for k, v in weighted_A.items()})
-        all_features.update({f"{k}_B_avg": v / total_units for k, v in weighted_B.items()})
+        all_features['DP A'] = dp_A
+        all_features['DP B'] = dp_B
+        # 加入 sum 特征
+        all_features.update({f"{k} A sum": v for k, v in weighted_A.items()})
+        all_features.update({f"{k} B sum": v for k, v in weighted_B.items()})
+
+        # 加入 avg 特征
+        all_features.update(weighted_A_avg)
+        all_features.update(weighted_B_avg)
+
         return all_features
 
     def add_polymer_features_to_df(self, df, polymer_col='StruD'):
+        """批量处理 DataFrame，添加聚合物增强描述符特征"""
         polymer_features_list = []
         for poly_str in df[polymer_col]:
             try:
                 feats = self.polymer_features(poly_str)
-                feats_full = {}
-                for desc in self.desc_list:
-                    for seg in ['A', 'B']:
-                        feats_full[f'Polymer_{desc}_{seg}_sum'] = feats.get(f'{desc}_{seg}_sum', 0)
-                        feats_full[f'Polymer_{desc}_{seg}_avg'] = feats.get(f'{desc}_{seg}_avg', 0)
+                polymer_features_list.append(feats)
+            except Exception as e:
+                print(f"处理聚合物 {poly_str} 时出错: {e}")
+                feats_full = {f'{desc} {seg} {typ}': 0 
+                            for desc in self.desc_list
+                            for seg in ['A','B']
+                            for typ in ['sum','avg']}
+                feats_full['DP_A'] = 0
+                feats_full['DP_B'] = 0
                 polymer_features_list.append(feats_full)
-            except:
-                polymer_features_list.append({})
+            
+
         poly_feat_df = pd.DataFrame(polymer_features_list)
-        return pd.concat([df.reset_index(drop=True), poly_feat_df], axis=1)
+        df_with_poly = pd.concat([df.reset_index(drop=True), poly_feat_df], axis=1)
+        return df_with_poly
 
 # ================== 2. Streamlit 页面逻辑 ==================
 st.set_page_config(page_title="AI 水凝胶预测系统", layout="wide")
@@ -112,13 +202,13 @@ st.set_page_config(page_title="AI 水凝胶预测系统", layout="wide")
 MONOMER_MW = {
     "EG": 44.05,
     "CL": 114.14,
-    "LA": 72.06,  # 这里的LA指乳酸单元
+    "LA": 72.06,
     "LLA": 72.06,
     "DLA": 72.06,
     "GA": 58.04,
     "PDO": 102.09,
     "TMC": 102.09,
-    "TOSUO": 172.18, # 估算值 C8H12O4
+    "TOSUO": 172.18,
     "PG": 74.08,
     "None": 1.0 
 }
@@ -225,9 +315,9 @@ with st.sidebar:
     st.markdown("**结构参数:**")
     st.code(f"StruD: {stru_d}", language="text")
     col_res1, col_res2, col_res3 = st.columns(3)
-    col_res1.metric("计算总 Mn", f"{calc_mn_total:.1f}")
-    col_res2.metric("Ratio_A (Mole%)", f"{calc_ratio_a:.3f}")
-    col_res3.metric("Ratio_B (Mole%)", f"{calc_ratio_b:.3f}")
+    col_res1.metric("Mn", f"{calc_mn_total:.1f}")
+    col_res2.metric("Ratio A", f"{calc_ratio_a:.3f}")
+    col_res3.metric("Ratio B", f"{calc_ratio_b:.3f}")
     calc_ratio_b = 1.0 - calc_ratio_a
 
 # --- 主界面：调节实验条件 ---
@@ -244,49 +334,99 @@ with col_main1:
     input_data = {
         'StruD': [stru_d],
         'Topology': [topology],
-        'Mn': [calc_mn_total], # 使用计算出的总 Mn
-        'GPC': [gpc],
+        'Mn(NMR)': [calc_mn_total], # 使用计算出的总 Mn
+        'Mn(GPC)': [gpc],
         'PDI': [pdi],
-        'Concentration_wt%': [concentration],
+        'Concentration': [concentration],
         'Temperature': [temperature],
-        'Ratio_A': [calc_ratio_a], # 使用计算出的 Ratio_A
-        'Ratio_B': [calc_ratio_b]  # 使用计算出的 Ratio_B
+        'Ratio A': [calc_ratio_a], # 使用计算出的 Ratio_A
+        'Ratio B': [calc_ratio_b],  # 使用计算出的 Ratio_B
+        'DP A': [total_dp_a], 
+        'DP B': [total_dp_b]
     }
     df_input = pd.DataFrame(input_data)
 
     if st.button("开始预测 (Predict)", type="primary"):
         if model and preprocessor:
             try:
-                # 1. 特征工程：生成 RDKit 描述符
+                # 1. 特征工程
                 df_features = pf.add_polymer_features_to_df(df_input)
                 
-                # 2. 确保列顺序与训练时一致
-                base_features = ['Topology', 'Mn', 'GPC', 'PDI', 'Concentration_wt%', 'Temperature', 'Ratio_A', 'Ratio_B']
-                poly_cols = [c for c in df_features.columns if c.startswith('Polymer_')]
-                features_all = base_features + poly_cols
+                # 2. 构造完整的特征列表 (对应 Preprocessor 的输入)
+                # 注意：这里只列出 Preprocessor 需要处理的原始列
+                base_features = [
+                                    'Topology', 
+                                    'Mn(NMR)', 
+                                    'Mn(GPC)', 'PDI',
+                                    'Concentration', 'Temperature',
+                                    'Ratio A','Ratio B',
+                                    'DP A','DP B',
+                                ]
+                # 动态获取生成的聚合物特征列 (现在的列名已经是 "LogP A sum" 格式了)
+                poly_cols = [c for c in df_features.columns if c.endswith(' sum')]
+                features_for_preprocessor = base_features + poly_cols
                 
-                X = df_features[features_all]
+                # 提取用于预处理的 X
+                X_raw = df_features[features_for_preprocessor]
                 
-                # 3. 预处理
-                X_processed = preprocessor.transform(X)
+                # 3. 预处理 (Transform)
+                # 这会生成包含所有特征(未筛选)的矩阵
+                X_processed_array = preprocessor.transform(X_raw)
                 
-                # 4. 预测
-                prediction = model.predict(X_processed)[0]
-                probability = model.predict_proba(X_processed)[0]
+                # 4. --- 关键修复：特征对齐 (Feature Alignment) ---
+                
+                # A. 重建预处理后的列名 (为了能按名字索引)
+                # 获取 OneHot 后的列名
+                try:
+                    cat_cols = ['Topology']
+                    num_cols = [c for c in features_for_preprocessor if c not in cat_cols]
+                    ohe_cols = preprocessor.named_transformers_['cat'].get_feature_names_out(cat_cols)
+                    all_processed_cols = num_cols + list(ohe_cols)
+                except Exception as e:
+                    st.error(f"预处理列名生成失败: {e}")
+                    st.stop()
+                
+                # 转为 DataFrame
+                X_processed_df = pd.DataFrame(X_processed_array, columns=all_processed_cols)
+                
+                # B. 获取模型真正需要的特征
+                # XGBoost 模型对象通常保存了 feature_names_in_
+                try:
+                    if hasattr(model, 'feature_names_in_'):
+                        model_features = model.feature_names_in_
+                    else:
+                        # 如果版本旧，尝试用 get_booster
+                        model_features = model.get_booster().feature_names
+                    
+                    # C. 只保留模型需要的列 (自动剔除训练时drop掉的列)
+                    X_final = X_processed_df[model_features]
+                    
+                except KeyError as e:
+                    st.error(f"特征缺失错误: 模型需要 {e}，但预处理结果中没有。请检查列名格式。")
+                    st.write("当前生成的列名:", all_processed_cols)
+                    st.stop()
+                except Exception as e:
+                    st.error(f"无法获取模型特征列表，尝试直接预测可能失败: {e}")
+                    X_final = X_processed_df # 盲目尝试
+                
+                # 5. 预测
+                prediction = model.predict(X_final)[0]
+                probability = model.predict_proba(X_final)[0]
 
-                # 5. 显示结果
+                # ... (后续显示结果的代码不变) ...
+                #显示结果
                 with col_main2:
                     st.markdown("### 预测结果")
                     if prediction == 1:
                         st.success("## Hydrogel (水凝胶)")
-                        st.metric("置信度 (Confidence)", f"{probability[1]*100:.2f}%")
+                        st.metric("Confidence(置信度)", f"{probability[1]*100:.2f}%")
                     else:
                         st.info("## Solution (溶液)")
-                        st.metric("置信度 (Confidence)", f"{probability[0]*100:.2f}%")
+                        st.metric("Confidence(置信度)", f"{probability[0]*100:.2f}%")
                     
                     st.markdown("---")
-                    st.write("**输入特征快照:**")
-                    st.json(input_data)
+                    #st.write("**输入特征快照:**")
+                    #st.json(input_data)
 
             except Exception as e:
                 st.error(f"预测出错: {str(e)}\n请检查特征列是否与模型匹配。")
