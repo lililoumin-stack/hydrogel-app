@@ -159,128 +159,148 @@ def load_hts_data():
         return None
 
 # ================== 3. 页面模式逻辑 ==================
-
 def page_single_prediction():
-    """原有页面：单点实时预测"""
-    model, preprocessor = load_models()
-    pf = PolymerFeature()
-    
-    st.header("������ 单点实时预测 (Real-time Prediction)")
-    st.caption("输入特定聚合物参数，预测其在特定条件下的相状态。")
+    """单点实时预测（修复版本，与HTS完全一致的特征对齐流程）"""
 
-    # --- 侧边栏 ---
+    # ====== 加载模型和预处理器 ======
+    preprocessor = joblib.load("preprocessor.joblib")
+    raw_input_columns = joblib.load("raw_input_columns.joblib")
+    post_transform_feature_names = joblib.load("post_transform_feature_names.joblib")
+    model_feature_names = joblib.load("model_feature_names.joblib")
+    final_feature_list = joblib.load("final_feature_list.joblib")
+    model = joblib.load("XGB_model.joblib")
+
+    pf = PolymerFeature()
+
+    st.header("单点实时预测 (Real-time Prediction)")
+    st.caption("输入聚合物参数，预测是否形成水凝胶。")
+
+    # ------- 侧边栏输入 -------
     with st.sidebar:
-        st.subheader("1. 聚合物属性输入")
+        st.subheader("1. 聚合物结构输入")
         topology = st.selectbox("拓扑结构", ["BAB", "ABA"], index=0)
-        
+
         col_a1, col_a2 = st.columns(2)
-        with col_a1: mono_a = st.selectbox("A 单体", ["EG"], index=0)
-        with col_a2: mn_a_val = st.number_input("A段分子量", value=1000.0, step=100.0)
+        with col_a1:
+            mono_a = st.selectbox("A 单体", ["EG"], index=0)
+        with col_a2:
+            mn_a_val = st.number_input("A 段分子量", value=1000.0, step=100.0)
 
         col_b1_1, col_b1_2 = st.columns(2)
-        with col_b1_1: mono_b1 = st.selectbox("B1 单体", ["CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
-        with col_b1_2: mn_b1_val = st.number_input("B1段分子量", value=700.0, step=100.0)
+        with col_b1_1:
+            mono_b1 = st.selectbox("B1 单体", ["CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
+        with col_b1_2:
+            mn_b1_val = st.number_input("B1 段分子量", value=700.0, step=100.0)
 
         col_b2_1, col_b2_2 = st.columns(2)
-        with col_b2_1: mono_b2 = st.selectbox("B2 单体", ["None", "CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
-        with col_b2_2: mn_b2_val = st.number_input("B2段分子量", value=0.0, step=100.0)
+        with col_b2_1:
+            mono_b2 = st.selectbox("B2 单体", ["None", "CL", "LA", "GA", "PDO", "TOSUO", "TMC"], index=0)
+        with col_b2_2:
+            mn_b2_val = st.number_input("B2 段分子量", value=0.0, step=100.0)
 
         col_gpc1, col_gpc2 = st.columns(2)
-        with col_gpc1: gpc = st.number_input("GPC (Mn)", value=2500.0)
-        with col_gpc2: pdi = st.number_input("PDI", value=1.2)
+        with col_gpc1:
+            gpc = st.number_input("GPC (Mn)", value=2500.0)
+        with col_gpc2:
+            pdi = st.number_input("PDI", value=1.2)
 
-        # 自动计算逻辑
+        # --- 自动计算结构 ---
         dp_a = int(round(mn_a_val / MONOMER_MW.get(mono_a, 100)))
         dp_b1 = int(round(mn_b1_val / MONOMER_MW.get(mono_b1, 100)))
         dp_b2 = int(round(mn_b2_val / MONOMER_MW.get(mono_b2, 100))) if mono_b2 != "None" else 0
 
         b_part_str = f"({mono_b1}){dp_b1}"
-        if mono_b2 != "None" and dp_b2 > 0: b_part_str += f"({mono_b2}){dp_b2}"
+        if mono_b2 != "None" and dp_b2 > 0:
+            b_part_str += f"({mono_b2}){dp_b2}"
+
         a_part_str = f"({mono_a}){dp_a}"
 
         if topology == "ABA":
             stru_d = f"{a_part_str}{b_part_str}{a_part_str}"
-            calc_mn_total = (mn_a_val * 2) + mn_b1_val + mn_b2_val
+            calc_mn_total = mn_a_val * 2 + mn_b1_val + mn_b2_val
             total_dp_a = dp_a * 2
             total_dp_b = dp_b1 + dp_b2
-        else: # BAB
+        else:  # BAB
             stru_d = f"{b_part_str}{a_part_str}{b_part_str}"
-            calc_mn_total = mn_a_val + (mn_b1_val * 2) + (mn_b2_val * 2)
+            calc_mn_total = mn_a_val + mn_b1_val * 2 + mn_b2_val * 2
             total_dp_a = dp_a
             total_dp_b = (dp_b1 + dp_b2) * 2
 
-        total_dp = total_dp_a + total_dp_b
-        calc_ratio_a = total_dp_a / total_dp if total_dp > 0 else 0
-        calc_ratio_b = 1.0 - calc_ratio_a
+        ratio_a = total_dp_a / (total_dp_a + total_dp_b)
+        ratio_b = 1 - ratio_a
 
         st.markdown("---")
         st.code(f"StruD: {stru_d}")
-        st.caption(f"Est. Mn: {calc_mn_total:.0f} | Ratio B: {calc_ratio_b:.2f}")
 
-    # --- 主区域 ---
+
+    # ------- 主区输入 -------
     col_main1, col_main2 = st.columns([2, 1])
     with col_main1:
         temperature = st.slider("温度 (°C)", 0.0, 80.0, 37.0)
         concentration = st.slider("浓度 (wt%)", 1.0, 50.0, 20.0)
 
-        input_data = {
-            'StruD': [stru_d], 'Topology': [topology], 'Mn(NMR)': [calc_mn_total],
-            'Mn(GPC)': [gpc], 'PDI': [pdi], 'Concentration': [concentration],
-            'Temperature': [temperature], 'Ratio A': [calc_ratio_a], 'Ratio B': [calc_ratio_b],
-            'DP A': [total_dp_a], 'DP B': [total_dp_b]
-        }
-        
-        if st.button("开始预测 (Predict)", type="primary"):
-            if not model:
-                st.error("模型未加载")
-                return
+        # --- 构造输入 DF ---
+        df_input = pd.DataFrame({
+            'StruD': [stru_d],
+            'Topology': [topology],
+            'Mn(NMR)': [calc_mn_total],
+            'Mn(GPC)': [gpc],
+            'PDI': [pdi],
+            'Concentration': [concentration],
+            'Temperature': [temperature],
+            'Ratio A': [ratio_a],
+            'Ratio B': [ratio_b],
+            'DP A': [total_dp_a],
+            'DP B': [total_dp_b]
+        })
 
-            try:
-                df_input = pd.DataFrame(input_data)
-                df_features = pf.add_polymer_features_to_df(df_input)
-                
-                # 对齐特征
-                base_features = ['Topology', 'Mn(NMR)', 'Mn(GPC)', 'PDI', 'Concentration', 'Temperature', 'Ratio A','Ratio B','DP A','DP B']
-                poly_cols = [c for c in df_features.columns if c.endswith(' sum')]
-                features_for_preprocessor = base_features + poly_cols
-                X_raw = df_features[features_for_preprocessor]
-                
-                X_processed_array = preprocessor.transform(X_raw)
-                
-                # 获取列名并对齐
-                try:
-                    cat_cols = ['Topology']
-                    num_cols = [c for c in features_for_preprocessor if c not in cat_cols]
-                    ohe_cols = preprocessor.named_transformers_['cat'].get_feature_names_out(cat_cols)
-                    all_processed_cols = num_cols + list(ohe_cols)
-                    X_processed_df = pd.DataFrame(X_processed_array, columns=all_processed_cols)
-                    
-                    if hasattr(model, 'feature_names_in_'):
-                        model_features = model.feature_names_in_
-                    else:
-                        model_features = model.get_booster().feature_names
-                    
-                    X_final = X_processed_df[model_features]
-                except Exception as e:
-                    st.error(f"特征对齐失败: {e}")
-                    st.stop()
+        if st.button("开始预测", type="primary"):
 
-                prediction = model.predict(X_final)[0]
-                probability = model.predict_proba(X_final)[0]
+            # ====== 流程 1: PolymerFeature 特征 ======
+            df_features = pf.add_polymer_features_to_df(df_input)
 
-                with col_main2:
-                    if prediction == 1:
-                        st.success("## Hydrogel")
-                        st.metric("Probability", f"{probability[1]*100:.2f}%")
-                    else:
-                        st.info("## Solution")
-                        st.metric("Probability", f"{probability[0]*100:.2f}%")
-            except Exception as e:
-                st.error(f"Error: {e}")
+            # ====== 流程 2: 构造 preprocessor 输入列 ======
+            # 若缺列 → 填 0
+            for col in raw_input_columns:
+                if col not in df_features:
+                    df_features[col] = 0.0
+
+            X_raw = df_features[raw_input_columns]
+
+            # ====== 流程 3: transform ======
+            X_trans = preprocessor.transform(X_raw)
+            X_arr = X_trans.toarray() if hasattr(X_trans, "toarray") else X_trans
+
+            X_df = pd.DataFrame(X_arr, columns=post_transform_feature_names)
+
+            # ====== 流程 4: 对齐模型特征 ======
+            # 添加缺失列
+            for col in model_feature_names:
+                if col not in X_df:
+                    X_df[col] = 0.0
+
+            # 删除多余列
+            extra_cols = [c for c in X_df.columns if c not in model_feature_names]
+            X_df.drop(columns=extra_cols, inplace=True)
+
+            # 按顺序重排
+            X_final = X_df[model_feature_names]
+
+            # ====== 流程 5: 预测 ======
+            prob = model.predict_proba(X_final)[0][1]
+            pred = 1 if prob >= 0.5 else 0
+
+            with col_main2:
+                if pred == 1:
+                    st.success("## Hydrogel")
+                else:
+                    st.info("## Solution")
+
+                st.metric("Probability", f"{prob*100:.2f}%")
 
 def page_hts_design():
     """新页面：共聚物反向设计 (HTS Explorer)"""
-    st.header("������ 共聚物反向设计 (Inverse Design & Screening)")
+    st.header("共聚物反向设计 (Inverse Design & Screening)")
     st.caption("基于高通量虚拟库，根据目标条件（如体温37°C）筛选最佳单体组合与聚合度。")
     
     df_hts = load_hts_data()
