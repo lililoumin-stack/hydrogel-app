@@ -250,8 +250,6 @@ def page_single_prediction():
             'Temperature': [temperature],
             'Ratio A': [ratio_a],
             'Ratio B': [ratio_b],
-            'DP A': [total_dp_a],
-            'DP B': [total_dp_b]
         })
 
         if st.button("开始预测", type="primary"):
