@@ -172,7 +172,7 @@ def page_single_prediction():
 
     pf = PolymerFeature()
 
-    st.header("单点实时预测 (Real-time Prediction)")
+    st.header("实时预测 (Prediction)")
     st.caption("输入聚合物参数，预测是否形成水凝胶。")
 
     # ------- 侧边栏输入 -------
@@ -378,7 +378,7 @@ def page_hts_design():
                 hide_index=True,
                 use_container_width=True
             )
-            st.success(f"������ 推荐：{df_top_prob.iloc[0]['StruD']} (Prob: {df_top_prob.iloc[0]['Prob_Gel']:.2f})")
+            st.success(f"推荐：{df_top_prob.iloc[0]['StruD']} (Prob: {df_top_prob.iloc[0]['Prob_Gel']:.2f})")
 
     # === Tab 2: 按 CGC 排序 (Lowest CGC) ===
     with tab2:
@@ -415,18 +415,18 @@ def page_hts_design():
             
             if not df_best_cgc.empty:
                 best_poly = df_best_cgc.iloc[0]
-                st.success(f"������ CGC 冠军：{best_poly['StruD']} \n\n 在 {best_poly['Concentration']} wt% 即可成胶 (Prob: {best_poly['Prob_Gel']:.2f})")
+                st.success(f"CGC 冠军：{best_poly['StruD']} \n\n 在 {best_poly['Concentration']} wt% 即可成胶 (Prob: {best_poly['Prob_Gel']:.2f})")
 
 # ================== 4. 主程序入口 ==================
 
 def main():
     st.sidebar.title("功能导航")
-    app_mode = st.sidebar.radio("选择模式", ["������ 单点实时预测", "������ 共聚物反向设计 (HTS)"])
+    app_mode = st.sidebar.radio("选择模式", ["实时预测", "共聚物设计"])
     st.sidebar.markdown("---")
 
-    if app_mode == "������ 单点实时预测":
+    if app_mode == "实时预测":
         page_single_prediction()
-    elif app_mode == "������ 共聚物反向设计 (HTS)":
+    elif app_mode == "共聚物设计":
         page_hts_design()
 
 if __name__ == "__main__":
