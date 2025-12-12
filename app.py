@@ -205,9 +205,9 @@ def page_single_prediction():
             pdi = st.number_input("PDI", value=1.2)
 
         # --- 自动计算结构 ---
-        dp_a = int(round(mn_a_val / MONOMER_MW.get(mono_a, 100)))
-        dp_b1 = int(round(mn_b1_val / MONOMER_MW.get(mono_b1, 100)))
-        dp_b2 = int(round(mn_b2_val / MONOMER_MW.get(mono_b2, 100))) if mono_b2 != "None" else 0
+        dp_a = round(mn_a_val / MONOMER_MW.get(mono_a, 100),1)
+        dp_b1 = round(mn_b1_val / MONOMER_MW.get(mono_b1, 100),1)
+        dp_b2 = round(mn_b2_val / MONOMER_MW.get(mono_b2, 100),1) if mono_b2 != "None" else 0
 
         b_part_str = f"({mono_b1}){dp_b1}"
         if mono_b2 != "None" and dp_b2 > 0:
@@ -290,16 +290,16 @@ def page_single_prediction():
 
             with col_main2:
                 if pred == 1:
-                    st.success("## Hydrogel")
+                    st.success("## State:hydrogel")
                 else:
-                    st.info("## Solution")
+                    st.info("## State:solution")
 
                 st.metric("Probability", f"{prob*100:.2f}%")
 
 def page_hts_design():
     """新页面：共聚物反向设计 (HTS Explorer)"""
     st.header("共聚物反向设计 (Inverse Design & Screening)")
-    st.caption("基于高通量虚拟库，根据目标条件（如体温37°C）筛选最佳单体组合与聚合度。")
+    st.caption("基于高通量虚拟库，根据目标条件筛选最佳单体组合与聚合度。")
     
     df_hts = load_hts_data()
     
@@ -340,10 +340,10 @@ def page_hts_design():
         st.info("当前条件下未找到数据，请放宽筛选条件。")
         return
 
-    st.markdown(f"### ������ 筛选结果 (Temp: {target_temp}°C)")
+    st.markdown(f"###筛选结果 (温度: {target_temp}°C)")
     
     # --- Tab 分页展示两种排序 ---
-    tab1, tab2 = st.tabs(["������ 最佳成胶概率 (Most Stable)", "������ 最低临界凝胶浓度 (Lowest CGC)"])
+    tab1, tab2 = st.tabs(["最佳成胶概率 (Most Stable)", "最低临界凝胶浓度 (Lowest CGC)"])
     
     # 展示列配置
     display_cols = ['StruD', 'Topology', 'Hydrophobic_Label', 'Mn(NMR)', 'Concentration', 'Prob_Gel', 'Pred_Label']
