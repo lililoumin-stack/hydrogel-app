@@ -417,7 +417,7 @@ def page_hts_design():
         st.subheader("1. 设定目标场景")
         
         # 温度选择
-        target_temp = st.slider("目标工作温度 (°C)", min_value=0, max_value=80, value=37, step=5)
+        target_temp = st.slider("目标工作温度 (°C)", min_value=0, max_value=80, value=35, step=5)
         
         # 拓扑筛选
         target_topo = st.multiselect("拓扑结构", options=df_hts['Topology'].unique(), default=['ABA'])
