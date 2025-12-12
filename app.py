@@ -227,7 +227,7 @@ def plot_prob_phase_diagram_streamlit(model, preprocessor,
     # ===== 绘图 =====
     fig, ax = plt.subplots(figsize=(7,6))
     cs = ax.contourf(CC, TT, Z, levels=200, cmap="RdYlBu_r")
-    contour = ax.contour(CC, TT, Z, levels=[0.1,0.3,0.5,0.7,0.9], colors='k', linewidths=0.8, alpha=0.5)
+    contour = ax.contour(CC, TT, Z, levels=[0.1,0.3,0.5,0.7,0.9], colors='k', linewidths=0.8, alpha=0.8)
     ax.clabel(contour, inline=True, fontsize=8, fmt=lambda x: f"{x*100:.1f}%")
 
     cbar = fig.colorbar(cs, ax=ax, label="Probability")
