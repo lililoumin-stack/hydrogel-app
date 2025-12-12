@@ -231,7 +231,10 @@ def plot_prob_phase_diagram_streamlit(model, preprocessor,
     ax.clabel(contour, inline=True, fontsize=8, fmt=lambda x: f"{x*100:.1f}%")
 
     cbar = fig.colorbar(cs, ax=ax, label="Probability")
-    cbar.ax.set_yticklabels([f'{t*100:.0f}%' for t in cbar.get_ticks()])
+    ticks = cbar.get_ticks()
+    labels = [f"{int(t*100)}%" for t in ticks]
+    cbar.set_ticks(ticks)
+    cbar.set_ticklabels(labels)
     ax.set_xlabel("Concentration (wt%)")
     ax.set_ylabel("Temperature (°C)")
     ax.set_title("Phase Diagram")
