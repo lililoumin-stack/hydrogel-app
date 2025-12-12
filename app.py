@@ -340,7 +340,7 @@ def page_hts_design():
         st.info("当前条件下未找到数据，请放宽筛选条件。")
         return
 
-    st.markdown(f"###筛选结果 (温度: {target_temp}°C)")
+    st.markdown(f"### 筛选结果 (温度: {target_temp}°C)")
     
     # --- Tab 分页展示两种排序 ---
     tab1, tab2 = st.tabs(["最佳成胶概率 (Most Stable)", "最低临界凝胶浓度 (Lowest CGC)"])
