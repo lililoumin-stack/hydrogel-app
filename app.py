@@ -157,6 +157,85 @@ def load_hts_data():
             return None
     else:
         return None
+def plot_prob_phase_diagram_streamlit(model, preprocessor,
+                                      raw_input_columns,
+                                      post_transform_feature_names,
+                                      model_feature_names,
+                                      polymer_feature_fn,
+                                      stru_d, topology,
+                                      calc_mn_total, gpc, pdi,
+                                      ratio_a, ratio_b,
+                                      grid_T=(0,80), grid_C=(1,50), steps=200):
+
+    # ===== 生成网格点 =====
+    import numpy as np
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    plt.switch_backend("Agg")  # 重要：Streamlit 绘图必须使用非交互后端
+
+    T_vals = np.linspace(grid_T[0], grid_T[1], steps)
+    C_vals = np.linspace(grid_C[0], grid_C[1], steps)
+
+    TT, CC = np.meshgrid(T_vals, C_vals)
+
+    # 网格平铺
+    TT_flat = TT.ravel()
+    CC_flat = CC.ravel()
+
+    # ===== 构造原始输入 DF =====
+    df_grid = pd.DataFrame({
+        "StruD": [stru_d] * len(TT_flat),
+        "Topology": [topology] * len(TT_flat),
+        "Mn(NMR)": [calc_mn_total] * len(TT_flat),
+        "Mn(GPC)": [gpc] * len(TT_flat),
+        "PDI": [pdi] * len(TT_flat),
+        "Concentration": CC_flat,
+        "Temperature": TT_flat,
+        "Ratio A": [ratio_a] * len(TT_flat),
+        "Ratio B": [ratio_b] * len(TT_flat),
+    })
+
+    # ===== PolymerFeature 特征 =====
+    df_features = polymer_feature_fn(df_grid)
+
+    # ===== 缺失列补齐 =====
+    for col in raw_input_columns:
+        if col not in df_features:
+            df_features[col] = 0.0
+
+    X_raw = df_features[raw_input_columns]
+
+    X_trans = preprocessor.transform(X_raw)
+    X_arr = X_trans.toarray() if hasattr(X_trans, "toarray") else X_trans
+    X_df = pd.DataFrame(X_arr, columns=post_transform_feature_names)
+
+    # 补齐模型特征列
+    for col in model_feature_names:
+        if col not in X_df:
+            X_df[col] = 0.0
+
+    # 删除多余列
+    extra = [c for c in X_df.columns if c not in model_feature_names]
+    X_df.drop(columns=extra, inplace=True)
+
+    X_final = X_df[model_feature_names]
+
+    # ===== 预测概率 =====
+    prob = model.predict_proba(X_final)[:, 1]
+    Z = prob.reshape(TT.shape)
+
+    # ===== 绘图 =====
+    fig, ax = plt.subplots(figsize=(7,6))
+    cs = ax.contourf(CC, TT, Z, levels=200, cmap="RdYlBu_r")
+    contour = ax.contour(CC, TT, Z, levels=[0.1,0.3,0.5,0.7,0.9], colors='k', linewidths=0.8)
+    ax.clabel(contour, inline=True, fontsize=8, fmt="%.2f")
+
+    fig.colorbar(cs, ax=ax, label="P(hydrogel)")
+    ax.set_xlabel("Concentration (wt%)")
+    ax.set_ylabel("Temperature (°C)")
+    ax.set_title("XGB Probability Phase Diagram")
+
+    return fig
 
 # ================== 3. 页面模式逻辑 ==================
 def page_single_prediction():
@@ -295,6 +374,27 @@ def page_single_prediction():
                     st.info("## State:solution")
 
                 st.metric("Probability", f"{prob*100:.2f}%")
+    # === 相图展示 ===
+    fig = plot_prob_phase_diagram_streamlit(
+            model=model,
+            preprocessor=preprocessor,
+            raw_input_columns=raw_input_columns,
+            post_transform_feature_names=post_transform_feature_names,
+            model_feature_names=model_feature_names,
+            polymer_feature_fn=pf.add_polymer_features_to_df,
+            stru_d=stru_d,
+            topology=topology,
+            calc_mn_total=calc_mn_total,
+            gpc=gpc,
+            pdi=pdi,
+            ratio_a=ratio_a,
+            ratio_b=ratio_b,
+            grid_T=(0,80),
+            grid_C=(1,50),
+            steps=200
+    )
+
+    st.pyplot(fig)
 
 def page_hts_design():
     """新页面：共聚物反向设计 (HTS Explorer)"""
