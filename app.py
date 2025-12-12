@@ -227,13 +227,14 @@ def plot_prob_phase_diagram_streamlit(model, preprocessor,
     # ===== 绘图 =====
     fig, ax = plt.subplots(figsize=(7,6))
     cs = ax.contourf(CC, TT, Z, levels=200, cmap="RdYlBu_r")
-    contour = ax.contour(CC, TT, Z, levels=[0.1,0.3,0.5,0.7,0.9], colors='k', linewidths=0.8)
-    ax.clabel(contour, inline=True, fontsize=8, fmt="%.2f")
+    contour = ax.contour(CC, TT, Z, levels=[0.1,0.3,0.5,0.7,0.9], colors='k', linewidths=0.8, alpha=0.5)
+    ax.clabel(contour, inline=True, fontsize=8, fmt=lambda x: f"{x*100:.1f}%" ,alpha=0.5)
 
-    fig.colorbar(cs, ax=ax, label="P(hydrogel)")
+    cbar = fig.colorbar(cs, ax=ax, label="Probability")
+    cbar.ax.set_yticklabels([f'{t*100:.0f}%' for t in cbar.get_ticks()])
     ax.set_xlabel("Concentration (wt%)")
     ax.set_ylabel("Temperature (°C)")
-    ax.set_title("XGB Probability Phase Diagram")
+    ax.set_title("Phase Diagram")
 
     return fig
 
@@ -374,27 +375,28 @@ def page_single_prediction():
                     st.info("## State:solution")
 
                 st.metric("Probability", f"{prob*100:.2f}%")
-    # === 相图展示 ===
-    fig = plot_prob_phase_diagram_streamlit(
-            model=model,
-            preprocessor=preprocessor,
-            raw_input_columns=raw_input_columns,
-            post_transform_feature_names=post_transform_feature_names,
-            model_feature_names=model_feature_names,
-            polymer_feature_fn=pf.add_polymer_features_to_df,
-            stru_d=stru_d,
-            topology=topology,
-            calc_mn_total=calc_mn_total,
-            gpc=gpc,
-            pdi=pdi,
-            ratio_a=ratio_a,
-            ratio_b=ratio_b,
-            grid_T=(0,80),
-            grid_C=(1,50),
-            steps=200
-    )
+                with st.spinner("正在生成相图...请稍等"):
+                    # === 相图展示 ===
+                    fig = plot_prob_phase_diagram_streamlit(
+                            model=model,
+                            preprocessor=preprocessor,
+                            raw_input_columns=raw_input_columns,
+                            post_transform_feature_names=post_transform_feature_names,
+                            model_feature_names=model_feature_names,
+                            polymer_feature_fn=pf.add_polymer_features_to_df,
+                            stru_d=stru_d,
+                            topology=topology,
+                            calc_mn_total=calc_mn_total,
+                            gpc=gpc,
+                            pdi=pdi,
+                            ratio_a=ratio_a,
+                            ratio_b=ratio_b,
+                            grid_T=(0,80),
+                            grid_C=(1,50),
+                            steps=200
+                    )
 
-    st.pyplot(fig)
+                    st.pyplot(fig)
 
 def page_hts_design():
     """新页面：共聚物反向设计 (HTS Explorer)"""
